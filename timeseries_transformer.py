@@ -2,9 +2,10 @@ import torch.nn as nn
 from torch import nn, Tensor
 import positional_encoder as pe
 import torch.nn.functional as F
+import torch
 
 
-class TimeSeriesToQuantumNoiseEncoders(nn.Module):
+class EncoderWithMLP(nn.Module):
 
     """
     This class implements an encoder only transformer model that is
@@ -98,6 +99,18 @@ class TimeSeriesToQuantumNoiseEncoders(nn.Module):
             encoder_layer=encoder_layer, num_layers=n_encoder_layers, norm=None
         )
 
+        self.fc1 = nn.Linear(2048, 512)
+        self.fc2 = nn.Linear(512, 256)
+        self.fc3 = nn.Linear(256, 128)
+        self.fc4 = nn.Linear(128, num_noise_matrices * noise_matrix_dim**2)
+
+    def custom_activation(self, x):
+        x[:, 3::4] = torch.sigmoid(x[:, 3::4])
+        x[:, 0:3] = F.relu(x[:, 0:3])
+        x[:, 4:7] = F.relu(x[:, 4:7])
+        x[:, 8:11] = F.relu(x[:, 8:11])
+        return x
+
     def forward(
         self,
         time_series_squence: Tensor,
@@ -105,27 +118,23 @@ class TimeSeriesToQuantumNoiseEncoders(nn.Module):
         """
         Returns a tensor of shape:
 
-        [
-            batch_size,
-            num_noise_matrices,
-            noise_matrix_dim,
-            noise_matrix_dim
-        ]
 
         Args:
             time_series_squence (Tensor):
                 a tensor of shape [batch_size, seq_len, 1]
+
+        Returns:
+            Tensor:
+                a tensor of shape: [
+                    batch_size,
+                    num_noise_matrices * noise_matrix_dim**2
+                ]
         """
 
-        src = self.encoder_input_layer(src)
-
-        src = self.positional_encoding_layer(src)
-
-        src = self.encoder(src=src)
-
-        # feed encoder output to complex valued neural network
-
-        # forward pass thorough complex valued CNN
-
-        # return noise encoding matrices
-        return src
+        encoder_input = self.encoder_input_layer(time_series_squence)
+        positional_encoding = self.positional_encoding_layer(encoder_input)
+        encoder_output = self.encoder(positional_encoding)
+        x1 = F.relu(self.fc1(encoder_output))
+        x2 = F.relu(self.fc2(x1))
+        x3 = F.relu(self.fc3(x2))
+        return self.custom_activation(self.fc4(x3))
