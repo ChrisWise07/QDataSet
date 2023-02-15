@@ -3,6 +3,84 @@ from torch import nn, Tensor
 import positional_encoder as pe
 import torch.nn.functional as F
 import torch
+import numpy as np
+
+TWO_PI = 2 * np.pi
+
+
+def trace_distance(A, B):
+    return torch.norm(A - B, p="fro")
+
+
+def custom_loss(y_pred, y_true) -> Tensor:
+    batch_size = y_pred.shape[0]
+    loss = 0.0
+
+    for i in range(batch_size):
+        hat_V_X = y_pred[i, 0:4].reshape(2, 2)
+        gt_V_X = y_true[i, 0:4].reshape(2, 2)
+        hat_V_Y = y_pred[i, 4:8].reshape(2, 2)
+        gt_V_Y = y_true[i, 4:8].reshape(2, 2)
+        hat_V_Z = y_pred[i, 8:12].reshape(2, 2)
+        gt_V_Z = y_true[i, 8:12].reshape(2, 2)
+
+        loss += (
+            trace_distance(hat_V_X, gt_V_X)
+            + trace_distance(hat_V_Y, gt_V_Y)
+            + trace_distance(hat_V_Z, gt_V_Z)
+        )
+
+    return loss / batch_size
+
+
+def construct_V_O(psi, theta, Delta, mu, O_inv):
+    Q = torch.zeros((2, 2), dtype=torch.float32)
+    D = torch.zeros((2, 2), dtype=torch.float32)
+
+    Q[0, 0] = torch.cos(theta) * torch.cos(Delta)
+    Q[0, 1] = torch.cos(theta) * torch.sin(Delta)
+    Q[1, 0] = -torch.sin(theta) * torch.sin(Delta)
+    Q[1, 1] = torch.sin(theta) * torch.cos(Delta)
+
+    Q = torch.mm(
+        Q,
+        torch.tensor(
+            [[torch.cos(psi), 0], [0, torch.cos(psi)]], dtype=torch.float32
+        ),
+    )
+    Q = torch.mm(
+        torch.tensor(
+            [[torch.cos(psi), 0], [0, torch.cos(psi)]], dtype=torch.float32
+        ),
+        Q,
+    )
+
+    D[0, 0] = mu
+    D[1, 1] = -mu
+
+    V_O = torch.mm(O_inv, torch.mm(Q, torch.mm(D, Q.t())))
+    return V_O
+
+
+for i in range(y_pred.shape[0]):
+    psi_X = y_pred[i, 0]
+    theta_X = y_pred[i, 1]
+    Delta_X = y_pred[i, 2]
+    mu_X = y_pred[i, 3]
+
+    psi_Y = y_pred[i, 4]
+    theta_Y = y_pred[i, 5]
+    Delta_Y = y_pred[i, 6]
+    mu_Y = y_pred[i, 7]
+
+    psi_Z = y_pred[i, 8]
+    theta_Z = y_pred[i, 9]
+    Delta_Z = y_pred[i, 10]
+    mu_Z = y_pred[i, 11]
+
+    V_O_X = construct_V_O(psi_X, theta_X, Delta_X, mu_X, O_inv)
+    V_O_Y = construct_V_O(psi_Y, theta_Y, Delta_Y, mu_Y, O_inv)
+    V_O_Z = construct_V_O(psi_Z, theta_Z, Delta_Z, mu_Z, O_inv)
 
 
 class EncoderWithMLP(nn.Module):
@@ -106,9 +184,9 @@ class EncoderWithMLP(nn.Module):
 
     def custom_activation(self, x):
         x[:, 3::4] = torch.sigmoid(x[:, 3::4])
-        x[:, 0:3] = F.relu(x[:, 0:3])
-        x[:, 4:7] = F.relu(x[:, 4:7])
-        x[:, 8:11] = F.relu(x[:, 8:11])
+        x[:, 0:3] = TWO_PI * torch.sigmoid(x[:, 0:3])
+        x[:, 4:7] = TWO_PI * torch.sigmoid(x[:, 4:7])
+        x[:, 8:11] = TWO_PI * torch.sigmoid(x[:, 8:11])
         return x
 
     def forward(
@@ -138,3 +216,27 @@ class EncoderWithMLP(nn.Module):
         x2 = F.relu(self.fc2(x1))
         x3 = F.relu(self.fc3(x2))
         return self.custom_activation(self.fc4(x3))
+
+
+model = EncoderWithMLP(
+    input_size=1024,
+    batch_first=True,
+    num_noise_matrices=3,
+    noise_matrix_dim=2,
+)
+
+criterion = custom_loss
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+
+nn.MSELoss()(y_pred, y_test)
+
+for epoch in range(100):
+    y_pred = model(X_train)
+    loss = criterion(y_pred, y_train)
+
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
+
+y_pred = model(X_test)
