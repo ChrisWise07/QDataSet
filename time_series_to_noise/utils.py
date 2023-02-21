@@ -5,7 +5,7 @@ import pickle
 import numpy as np
 from typing import Tuple
 
-from constants import (
+from time_series_to_noise.constants import (
     SIGMA_X_DAGGER,
     SIGMA_Y_DAGGER,
     SIGMA_Z_DAGGER,
@@ -48,14 +48,14 @@ def trace_distance_based_loss(
     """
 
     num_matrices = estimated_VX.shape[0]
-    loss = 0.0
+    loss = torch.tensor(0.0)
     for i in range(num_matrices):
         loss += (
             trace_distance(estimated_VX[i], VX_true[i])
             + trace_distance(estimated_VY[i], VY_true[i])
             + trace_distance(estimated_VZ[i], VZ_true[i])
         )
-    return torch.tensor(loss / num_matrices, requires_grad=True)
+    return (loss / num_matrices).clone().detach().requires_grad_(True)
 
 
 def construct_estimated_VO_unital(
@@ -107,7 +107,6 @@ def return_estimated_VO_unital_for_batch(
     estimated_VX = torch.zeros((batch_size, 2, 2), dtype=torch.complex64)
     estimated_VY = torch.zeros((batch_size, 2, 2), dtype=torch.complex64)
     estimated_VZ = torch.zeros((batch_size, 2, 2), dtype=torch.complex64)
-    print(batch_parameters.shape)
     for i in range(batch_size):
         estimated_VX[i] = construct_estimated_VO_unital(
             batch_parameters[i, 0],

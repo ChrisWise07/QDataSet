@@ -12,7 +12,7 @@ from EncoderWithMLP import EncoderWithMLP
 data1 = DATA_SET_NAMES[0]
 data2 = data1 + "_D"
 dataset_name = data2  # "G_1q_XY_XZ_N1N5_D" # dataset name
-num_ex = 2  # number of examples
+num_ex = 9  # number of examples
 
 pulses, Vx, Vy, Vz = load_Vo_dataset(
     path_to_dataset=f"./QuantumDS/{data1}/{data1}",
@@ -33,7 +33,7 @@ model = EncoderWithMLP(
 )
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-for epoch in range(100):
+for epoch in range(200):
     y_pred_parameters = model(pulses)
 
     (
@@ -45,8 +45,10 @@ for epoch in range(100):
     loss = trace_distance_based_loss(
         estimated_VX, estimated_VY, estimated_VZ, Vx, Vy, Vz
     )
-    print(f"Epoch: {epoch}, Loss: {loss.item()}")
+
+    if epoch % 10 == 0:
+        print(f"Epoch: {epoch}, Loss: {loss.item()}")
+
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
-    print(f"Epoch done")
