@@ -201,31 +201,32 @@ class TestReturnEstimatedVOUnitalForBatch(unittest.TestCase):
             estimated_VZ,
         ) = return_estimated_VO_unital_for_batch(batch_parameters)
 
-        excepted_VX = torch.tensor(
+        expected_VX = torch.tensor(
             [
                 [
                     [-0.2590 + 0.4034j, -0.8776 + 0.0000j],
                     [0.8776 + 0.0000j, -0.2590 - 0.4034j],
                 ],
                 [
-                    [0.5286 - 0.2235j, 0.5574 + 0.00000j],
+                    [-0.5286 + 0.2235j, -0.5574 + 0.00000j],
                     [0.5574 + 0.0000j, -0.5286 - 0.2235j],
                 ],
             ]
         )
-        excepted_VY = torch.tensor(
+        expected_VY = torch.tensor(
             [
                 [
                     [0.0561 + 0.2767j, 0.0000 + 0.4127j],
                     [0.0000 + 0.4127j, 0.0561 - 0.2767j],
                 ],
                 [
-                    [-0.4034 + 0.259j, 0.0000 - 0.8776j],
-                    [0.0000 + 0.8776j, -0.4034 - 0.2590j],
+                    [0.4034 + 0.259j, 0.0000 + 0.8776j],
+                    [0.0000 + 0.8776j, 0.4034 - 0.2590j],
                 ],
             ]
         )
-        excepted_VZ = torch.tensor(
+
+        expected_VZ = torch.tensor(
             [
                 [
                     [0.5574 + 0.0000j, -0.5286 - 0.2235j],
@@ -243,21 +244,21 @@ class TestReturnEstimatedVOUnitalForBatch(unittest.TestCase):
         self.assertTrue(
             torch.allclose(
                 estimated_VX,
-                excepted_VX,
+                expected_VX,
                 atol=1e-04,
             )
         )
         self.assertTrue(
             torch.allclose(
                 estimated_VY,
-                excepted_VY,
+                expected_VY,
                 atol=1e-04,
             )
         )
         self.assertTrue(
             torch.allclose(
                 estimated_VZ,
-                excepted_VZ,
+                expected_VZ,
                 atol=1e-04,
             )
         )
