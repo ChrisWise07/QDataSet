@@ -5,7 +5,7 @@ import pickle
 import numpy as np
 from typing import Tuple
 
-from time_series_to_noise.constants import (
+from constants import (
     SIGMA_X_DAGGER,
     SIGMA_Y_DAGGER,
     SIGMA_Z_DAGGER,

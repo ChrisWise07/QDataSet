@@ -18,6 +18,9 @@ pulses, Vx, Vy, Vz = load_Vo_dataset(
     path_to_dataset=f"./QuantumDS/{data1}/{data1}",
     num_examples=num_ex,
 )
+print(f"Shape of input squence:\n {pulses.shape}")
+print(f"Shape of ground truth V_O:\n {Vx.shape}, {Vy.shape}, {Vz.shape}")
+
 
 model = EncoderWithMLP(
     input_size=1024,
@@ -33,8 +36,10 @@ model = EncoderWithMLP(
 )
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-for epoch in range(200):
+for epoch in range(2):
     y_pred_parameters = model(pulses)
+    print(f"y_pred_parameters.shape:\n {y_pred_parameters.shape}")
+    print(f"y_pred_parameters:\n {y_pred_parameters}")
 
     (
         estimated_VX,

@@ -25,5 +25,7 @@ class PositionalEncoding(nn.Module):
         Args:
             x: Tensor, shape [seq_len, batch_size, embedding_dim]
         """
+        print(f"Shape used by pytorch library:\n {self.pe[:x.size(0)].shape}")
+        print(f"Shape I use: \n {self.pe[: x.size(0)].squeeze().shape}")
         x = x + self.pe[: x.size(0)].squeeze()
         return self.dropout(x)
