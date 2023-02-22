@@ -55,6 +55,7 @@ def trace_distance_based_loss(
             + trace_distance(estimated_VY[i], VY_true[i])
             + trace_distance(estimated_VZ[i], VZ_true[i])
         )
+    print(f"loss in trace based loss function: {loss}")
     return (loss / num_matrices).clone().detach().requires_grad_(True)
 
 

@@ -17,7 +17,7 @@ class SimpleANN(nn.Module):
         """
         Args:
 
-            input_size (int): number of input variables.
+            input_size (int): the length of the sequence.
 
             num_noise_matrices (int):
                 the number of noise matrices to predict
@@ -34,14 +34,14 @@ class SimpleANN(nn.Module):
         self.fc2 = nn.Linear(512, 256)
         self.fc3 = nn.Linear(256, 128)
         self.fc4 = nn.Linear(128, 64)
-        self.fc5 = nn.Linear(64, 12)
+        self.fc5 = nn.Linear(64, num_noise_matrices * (noise_matrix_dim**2))
 
     def custom_activation(self, x: Tensor) -> Tensor:
         """
         Applies a custom activation function to the output of the
         neural network. The custom activation function is a sigmoid
         applied to all elements. Every element is multiplied by 2pi
-        except for every third element.
+        except for every third element which is between 0-1.
 
         Args:
             x (Tensor):
@@ -71,17 +71,17 @@ class SimpleANN(nn.Module):
 
         Args:
             time_series_squence (Tensor):
-                a tensor of shape [batch_size, seq_len, 1]
+                a tensor of shape [batch_size, seq_len]
 
         Returns:
             Tensor:
                 a tensor of shape: [
                     batch_size,
-                    num_noise_matrices * noise_matrix_dim**2
+                    num_noise_matrices * (noise_matrix_dim**2)
                 ]
         """
         x1 = F.relu(self.fc1(time_series_squence))
         x2 = F.relu(self.fc2(x1))
         x3 = F.relu(self.fc3(x2))
         x4 = F.relu(self.fc4(x3))
-        return TWO_PI * torch.sigmoid(self.fc5(x4))
+        return self.custom_activation(self.fc5(x4))

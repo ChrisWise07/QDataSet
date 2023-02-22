@@ -101,11 +101,10 @@ class EncoderWithMLP(nn.Module):
             encoder_layer=encoder_layer, num_layers=n_encoder_layers, norm=None
         )
 
-        self.fc1 = nn.Linear(1024, 512)
-        self.fc2 = nn.Linear(512, 256)
-        self.fc3 = nn.Linear(256, 128)
-        self.fc4 = nn.Linear(128, 64)
-        self.fc5 = nn.Linear(64, num_noise_matrices * noise_matrix_dim**2)
+        self.fc1 = nn.Linear(512, 256)
+        self.fc2 = nn.Linear(256, 128)
+        self.fc3 = nn.Linear(128, 64)
+        self.fc4 = nn.Linear(64, num_noise_matrices * (noise_matrix_dim**2))
 
     def custom_activation(self, x: Tensor) -> Tensor:
         """
@@ -142,7 +141,7 @@ class EncoderWithMLP(nn.Module):
 
         Args:
             time_series_squence (Tensor):
-                a tensor of shape [batch_size, seq_len, 1]
+                a tensor of shape [batch_size, seq_len]
 
         Returns:
             Tensor:
@@ -151,11 +150,10 @@ class EncoderWithMLP(nn.Module):
                     num_noise_matrices * noise_matrix_dim**2
                 ]
         """
-        # encoder_input = self.encoder_input_layer(time_series_squence)
-        # positional_encoding = self.positional_encoding_layer(encoder_input)
-        # encoder_output = self.encoder(positional_encoding)
-        x1 = F.relu(self.fc1(time_series_squence))
+        encoder_input = self.encoder_input_layer(time_series_squence)
+        positional_encoding = self.positional_encoding_layer(encoder_input)
+        encoder_output = self.encoder(positional_encoding)
+        x1 = F.relu(self.fc1(encoder_output))
         x2 = F.relu(self.fc2(x1))
         x3 = F.relu(self.fc3(x2))
-        x4 = F.relu(self.fc4(x3))
-        return self.custom_activation(self.fc5(x4))
+        return self.custom_activation(self.fc4(x3))
