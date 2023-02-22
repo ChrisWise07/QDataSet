@@ -153,6 +153,7 @@ def load_Vo_dataset(
     with zipfile.ZipFile(f"{path_to_dataset}.zip", mode="r") as fzip:
         for index, fname in enumerate(fzip.namelist()[:num_examples]):
             with fzip.open(fname, "r") as f:
+                # print(f"Loading {fname}...")
                 data = pickle.load(f)
                 pulses[index, :] = data["pulses"][0, :, 0].reshape(
                     1024,
