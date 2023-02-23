@@ -34,7 +34,7 @@ class SimpleANN(nn.Module):
         self.fc2 = nn.Linear(512, 256)
         self.fc3 = nn.Linear(256, 128)
         self.fc4 = nn.Linear(128, 64)
-        self.fc5 = nn.Linear(64, num_noise_matrices * (noise_matrix_dim**2))
+        self.fc5 = nn.Linear(64, 9)
 
     def custom_activation(self, x: Tensor) -> Tensor:
         """

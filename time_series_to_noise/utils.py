@@ -55,7 +55,6 @@ def trace_distance_based_loss(
             + trace_distance(estimated_VY[i], VY_true[i])
             + trace_distance(estimated_VZ[i], VZ_true[i])
         )
-    print(f"loss in trace based loss function: {loss}")
     return (loss / num_matrices).clone().detach().requires_grad_(True)
 
 
@@ -130,6 +129,37 @@ def return_estimated_VO_unital_for_batch(
     return estimated_VX, estimated_VY, estimated_VZ
 
 
+def VO_parameter_estimation_loss_wrapper(
+    y_pred_parameters, y_true_VX, y_true_VY, y_true_VZ
+):
+    """
+    Wrapper function for the loss function that calculates the loss
+    between the estimated noise matrices and the true noise matrices.
+
+    Args:
+        y_pred_parameters (Tensor): predicted parameters
+        y_true_VX (Tensor): true noise encoding matrix V_X
+        y_true_VY (Tensor): true noise encoding matrix V_Y
+        y_true_VZ (Tensor): true noise encoding matrix V_Z
+
+    Returns:
+        Tensor: loss
+    """
+    (
+        estimated_VX,
+        estimated_VY,
+        estimated_VZ,
+    ) = return_estimated_VO_unital_for_batch(y_pred_parameters)
+    return trace_distance_based_loss(
+        estimated_VX,
+        estimated_VY,
+        estimated_VZ,
+        y_true_VX,
+        y_true_VY,
+        y_true_VZ,
+    )
+
+
 def load_Vo_dataset(
     path_to_dataset: str, num_examples: int
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -166,3 +196,91 @@ def load_Vo_dataset(
         torch.from_numpy(Vy),
         torch.from_numpy(Vz),
     )
+
+
+def calculate_ground_turth_parameters(
+    ground_truth_VX: Tensor,
+    ground_truth_VY: Tensor,
+    ground_truth_VZ: Tensor,
+):
+    batch_size = ground_truth_VX.shape[0]
+    ground_turth_parameters = torch.zeros(
+        (batch_size, 9), dtype=torch.complex64
+    )
+    for i in range(batch_size):
+        X_eigenvalues, X_eigenvectors = torch.linalg.eig(ground_truth_VX[i])
+        X_mu = X_eigenvalues[0].item()
+        X_psi = (
+            torch.log(X_eigenvectors[0, 0]) - torch.log(X_eigenvectors[1, 1])
+        ) / 2j
+        X_theta = torch.atan(X_eigenvectors[0, 1] / X_eigenvectors[0, 0])
+        Y_eigenvalues, Y_eigenvectors = torch.linalg.eig(ground_truth_VY[i])
+        Y_mu = Y_eigenvalues[0].item()
+        Y_psi = (
+            torch.log(Y_eigenvectors[0, 0]) - torch.log(Y_eigenvectors[1, 1])
+        ) / 2j
+        Y_theta = torch.atan(Y_eigenvectors[0, 1] / Y_eigenvectors[0, 0])
+        Z_eigenvalues, Z_eigenvectors = torch.linalg.eig(ground_truth_VZ[i])
+        Z_mu = Z_eigenvalues[0].item()
+        Z_psi = (
+            torch.log(Z_eigenvectors[0, 0]) - torch.log(Z_eigenvectors[1, 1])
+        ) / 2j
+        Z_theta = torch.atan(Z_eigenvectors[0, 1] / Z_eigenvectors[0, 0])
+        ground_turth_parameters[i] = torch.tensor(
+            [
+                X_psi,
+                X_theta,
+                X_mu,
+                Y_psi,
+                Y_theta,
+                Y_mu,
+                Z_psi,
+                Z_theta,
+                Z_mu,
+            ]
+        )
+    return ground_turth_parameters
+
+
+def calculate_ground_turth_parameters_updated(
+    ground_truth_VX: Tensor,
+    ground_truth_VY: Tensor,
+    ground_truth_VZ: Tensor,
+):
+    batch_size = ground_truth_VX.shape[0]
+    ground_turth_parameters = torch.zeros(
+        (batch_size, 9), dtype=torch.complex64
+    )
+
+    X_eigenvalues, X_eigenvectors = torch.linalg.eig(ground_truth_VX)
+    X_mu = X_eigenvalues[:, 0].reshape(-1, 1)
+    X_psi = (
+        torch.log(X_eigenvectors[:, 0, 0]) - torch.log(X_eigenvectors[:, 1, 1])
+    ) / 2j
+    X_theta = torch.atan(
+        X_eigenvectors[:, 0, 1] / X_eigenvectors[:, 0, 0]
+    ).reshape(-1, 1)
+
+    Y_eigenvalues, Y_eigenvectors = torch.linalg.eig(ground_truth_VY)
+    Y_mu = Y_eigenvalues[:, 0].reshape(-1, 1)
+    Y_psi = (
+        torch.log(Y_eigenvectors[:, 0, 0]) - torch.log(Y_eigenvectors[:, 1, 1])
+    ) / 2j
+    Y_theta = torch.atan(
+        Y_eigenvectors[:, 0, 1] / Y_eigenvectors[:, 0, 0]
+    ).reshape(-1, 1)
+
+    Z_eigenvalues, Z_eigenvectors = torch.linalg.eig(ground_truth_VZ)
+    Z_mu = Z_eigenvalues[:, 0].reshape(-1, 1)
+    Z_psi = (
+        torch.log(Z_eigenvectors[:, 0, 0]) - torch.log(Z_eigenvectors[:, 1, 1])
+    ) / 2j
+    Z_theta = torch.atan(
+        Z_eigenvectors[:, 0, 1] / Z_eigenvectors[:, 0, 0]
+    ).reshape(-1, 1)
+
+    ground_turth_parameters[:, :3] = torch.cat([X_psi, X_theta, X_mu], dim=0)
+    ground_turth_parameters[:, 3:6] = torch.cat([Y_psi, Y_theta, Y_mu], dim=0)
+    ground_turth_parameters[:, 6:] = torch.cat([Z_psi, Z_theta, Z_mu], dim=0)
+
+    return ground_turth_parameters
