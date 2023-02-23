@@ -27,6 +27,21 @@ def trace_distance(rho: Tensor, sigma: Tensor) -> Tensor:
     return torch.norm(rho - sigma, p="fro")
 
 
+def trace_distance_batch_of_matrices(rho: Tensor, sigma: Tensor) -> Tensor:
+    """
+    Calculates the trace distance between two batches of density matrices.
+    A factor of 1/2 is omitted for efficiency.
+
+    Args:
+        rho (np.ndarray): density matrix
+        sigma (np.ndarray): density matrix
+
+    Returns:
+        Tensor: trace distance
+    """
+    return torch.norm(rho - sigma, p="fro", dim=(1, 2))
+
+
 def trace_distance_based_loss(
     estimated_VX: Tensor,
     estimated_VY: Tensor,
@@ -46,48 +61,42 @@ def trace_distance_based_loss(
     Returns:
         Tensor: loss
     """
-
-    num_matrices = estimated_VX.shape[0]
-    loss = torch.tensor(0.0)
-    for i in range(num_matrices):
-        loss += (
-            trace_distance(estimated_VX[i], VX_true[i])
-            + trace_distance(estimated_VY[i], VY_true[i])
-            + trace_distance(estimated_VZ[i], VZ_true[i])
-        )
-    return (loss / num_matrices).clone().detach().requires_grad_(True)
+    return (
+        trace_distance_batch_of_matrices(estimated_VX, VX_true).sum()
+        + trace_distance_batch_of_matrices(estimated_VY, VY_true).sum()
+        + trace_distance_batch_of_matrices(estimated_VZ, VZ_true).sum()
+    ) / estimated_VX.shape[0]
 
 
 def construct_estimated_VO_unital(
-    psi: float, theta: float, mu: float, O_dagger: Tensor
+    psi: Tensor,
+    theta: Tensor,
 ) -> Tensor:
-    """
+    r"""
     Construct the estimated noise encoding matrix V_O from the
     parameters psi, theta, mu and the inverse of the pauli observable O.
 
     Args:
-        psi (float): parameter
-        theta (float): parameter
-        mu (float): parameter
-        O_inv (Tensor): inverse of the pauli observable
+        psi (Tensor): parameter of shape (batch_size,)
+        theta (Tensor): parameter of shape (batch_size,)
 
     Returns:
-        Tensor: estimated noise encoding matrix V_O
+        Tensor: estimated noise encoding matrix QDQ^{\dagger} of shape (batch_size, 2, 2)
     """
     cos_2theta = torch.cos(2 * theta)
     sin_2theta = torch.sin(2 * theta)
     exp_2ipsi = torch.exp(2j * psi)
     exp_minus2ipsi = torch.exp(-2j * psi)
 
-    return torch.matmul(
-        O_dagger,
-        torch.tensor(
-            [
-                [mu * cos_2theta, -exp_2ipsi * mu * sin_2theta],
-                [-exp_minus2ipsi * mu * sin_2theta, -mu * cos_2theta],
-            ]
-        ),
-    )
+    return torch.stack(
+        [
+            cos_2theta,
+            -exp_2ipsi * sin_2theta,
+            -exp_minus2ipsi * sin_2theta,
+            -cos_2theta,
+        ],
+        dim=-1,
+    ).reshape(-1, 2, 2)
 
 
 def return_estimated_VO_unital_for_batch(
@@ -103,60 +112,24 @@ def return_estimated_VO_unital_for_batch(
     Returns:
         Tensor: estimated noise encoding matrices V_O
     """
-    batch_size = batch_parameters.shape[0]
-    estimated_VX = torch.zeros((batch_size, 2, 2), dtype=torch.complex64)
-    estimated_VY = torch.zeros((batch_size, 2, 2), dtype=torch.complex64)
-    estimated_VZ = torch.zeros((batch_size, 2, 2), dtype=torch.complex64)
-    for i in range(batch_size):
-        estimated_VX[i] = construct_estimated_VO_unital(
-            batch_parameters[i, 0],
-            batch_parameters[i, 1],
-            batch_parameters[i, 2],
-            SIGMA_X_DAGGER,
-        )
-        estimated_VY[i] = construct_estimated_VO_unital(
-            batch_parameters[i, 3],
-            batch_parameters[i, 4],
-            batch_parameters[i, 5],
-            SIGMA_Y_DAGGER,
-        )
-        estimated_VZ[i] = construct_estimated_VO_unital(
-            batch_parameters[i, 6],
-            batch_parameters[i, 7],
-            batch_parameters[i, 8],
-            SIGMA_Z_DAGGER,
-        )
-    return estimated_VX, estimated_VY, estimated_VZ
-
-
-def VO_parameter_estimation_loss_wrapper(
-    y_pred_parameters, y_true_VX, y_true_VY, y_true_VZ
-):
-    """
-    Wrapper function for the loss function that calculates the loss
-    between the estimated noise matrices and the true noise matrices.
-
-    Args:
-        y_pred_parameters (Tensor): predicted parameters
-        y_true_VX (Tensor): true noise encoding matrix V_X
-        y_true_VY (Tensor): true noise encoding matrix V_Y
-        y_true_VZ (Tensor): true noise encoding matrix V_Z
-
-    Returns:
-        Tensor: loss
-    """
     (
-        estimated_VX,
-        estimated_VY,
-        estimated_VZ,
-    ) = return_estimated_VO_unital_for_batch(y_pred_parameters)
-    return trace_distance_based_loss(
-        estimated_VX,
-        estimated_VY,
-        estimated_VZ,
-        y_true_VX,
-        y_true_VY,
-        y_true_VZ,
+        x_psi,
+        x_theta,
+        x_mu,
+        y_psi,
+        y_theta,
+        y_mu,
+        z_psi,
+        z_theta,
+        z_mu,
+    ) = batch_parameters.T
+    estimated_VX = construct_estimated_VO_unital(x_psi, x_theta)
+    estimated_VY = construct_estimated_VO_unital(y_psi, y_theta)
+    estimated_VZ = construct_estimated_VO_unital(z_psi, z_theta)
+    return (
+        SIGMA_X_DAGGER @ (estimated_VX * x_mu[:, None, None]),
+        SIGMA_Y_DAGGER @ (estimated_VY * y_mu[:, None, None]),
+        SIGMA_Z_DAGGER @ (estimated_VZ * z_mu[:, None, None]),
     )
 
 
@@ -184,7 +157,6 @@ def load_Vo_dataset(
     with zipfile.ZipFile(f"{path_to_dataset}.zip", mode="r") as fzip:
         for index, fname in enumerate(fzip.namelist()[:num_examples]):
             with fzip.open(fname, "r") as f:
-                # print(f"Loading {fname}...")
                 data = pickle.load(f)
                 pulses[index, :] = data["pulses"][0, :, 0].reshape(
                     1024,
@@ -198,89 +170,54 @@ def load_Vo_dataset(
     )
 
 
+def calculate_psi_theta_mu(matrix: Tensor) -> Tuple[float, float, float]:
+    """
+    Calculate the parameters psi, theta, mu from a noise encoding matrix.
+
+    Args:
+        matrix (Tensor): noise encoding matrix
+
+    Returns:
+        Tuple[float, float, float]: psi, theta, mu
+    """
+    eigenvalues, eigenvectors = torch.linalg.eig(matrix)
+
+    psi = (
+        torch.log(eigenvectors[:, 0, 0]) - torch.log(eigenvectors[:, 1, 1])
+    ) / 2j
+    theta = torch.atan(eigenvectors[:, 0, 1] / eigenvectors[:, 0, 0])
+    mu = eigenvalues[:, 0]
+    return psi, theta, mu
+
+
 def calculate_ground_turth_parameters(
     ground_truth_VX: Tensor,
     ground_truth_VY: Tensor,
     ground_truth_VZ: Tensor,
 ):
-    batch_size = ground_truth_VX.shape[0]
-    ground_turth_parameters = torch.zeros(
-        (batch_size, 9), dtype=torch.complex64
+    """
+    Calculate the ground truth parameters psi, theta, mu from the noise
+    encoding matrices.
+
+    Args:
+        ground_truth_VX (Tensor): noise encoding matrix V_X
+        ground_truth_VY (Tensor): noise encoding matrix V_Y
+        ground_truth_VZ (Tensor): noise encoding matrix V_Z
+
+    Returns:
+        Tensor: ground truth parameters
+    """
+    X_psi, X_theta, X_mu = calculate_psi_theta_mu(
+        SIGMA_X_DAGGER @ ground_truth_VX
     )
-    for i in range(batch_size):
-        X_eigenvalues, X_eigenvectors = torch.linalg.eig(ground_truth_VX[i])
-        X_mu = X_eigenvalues[0].item()
-        X_psi = (
-            torch.log(X_eigenvectors[0, 0]) - torch.log(X_eigenvectors[1, 1])
-        ) / 2j
-        X_theta = torch.atan(X_eigenvectors[0, 1] / X_eigenvectors[0, 0])
-        Y_eigenvalues, Y_eigenvectors = torch.linalg.eig(ground_truth_VY[i])
-        Y_mu = Y_eigenvalues[0].item()
-        Y_psi = (
-            torch.log(Y_eigenvectors[0, 0]) - torch.log(Y_eigenvectors[1, 1])
-        ) / 2j
-        Y_theta = torch.atan(Y_eigenvectors[0, 1] / Y_eigenvectors[0, 0])
-        Z_eigenvalues, Z_eigenvectors = torch.linalg.eig(ground_truth_VZ[i])
-        Z_mu = Z_eigenvalues[0].item()
-        Z_psi = (
-            torch.log(Z_eigenvectors[0, 0]) - torch.log(Z_eigenvectors[1, 1])
-        ) / 2j
-        Z_theta = torch.atan(Z_eigenvectors[0, 1] / Z_eigenvectors[0, 0])
-        ground_turth_parameters[i] = torch.tensor(
-            [
-                X_psi,
-                X_theta,
-                X_mu,
-                Y_psi,
-                Y_theta,
-                Y_mu,
-                Z_psi,
-                Z_theta,
-                Z_mu,
-            ]
-        )
-    return ground_turth_parameters
-
-
-def calculate_ground_turth_parameters_updated(
-    ground_truth_VX: Tensor,
-    ground_truth_VY: Tensor,
-    ground_truth_VZ: Tensor,
-):
-    batch_size = ground_truth_VX.shape[0]
-    ground_turth_parameters = torch.zeros(
-        (batch_size, 9), dtype=torch.complex64
+    Y_psi, Y_theta, Y_mu = calculate_psi_theta_mu(
+        SIGMA_Y_DAGGER @ ground_truth_VY
+    )
+    Z_psi, Z_theta, Z_mu = calculate_psi_theta_mu(
+        SIGMA_Z_DAGGER @ ground_truth_VZ
     )
 
-    X_eigenvalues, X_eigenvectors = torch.linalg.eig(ground_truth_VX)
-    X_mu = X_eigenvalues[:, 0].reshape(-1, 1)
-    X_psi = (
-        torch.log(X_eigenvectors[:, 0, 0]) - torch.log(X_eigenvectors[:, 1, 1])
-    ) / 2j
-    X_theta = torch.atan(
-        X_eigenvectors[:, 0, 1] / X_eigenvectors[:, 0, 0]
-    ).reshape(-1, 1)
-
-    Y_eigenvalues, Y_eigenvectors = torch.linalg.eig(ground_truth_VY)
-    Y_mu = Y_eigenvalues[:, 0].reshape(-1, 1)
-    Y_psi = (
-        torch.log(Y_eigenvectors[:, 0, 0]) - torch.log(Y_eigenvectors[:, 1, 1])
-    ) / 2j
-    Y_theta = torch.atan(
-        Y_eigenvectors[:, 0, 1] / Y_eigenvectors[:, 0, 0]
-    ).reshape(-1, 1)
-
-    Z_eigenvalues, Z_eigenvectors = torch.linalg.eig(ground_truth_VZ)
-    Z_mu = Z_eigenvalues[:, 0].reshape(-1, 1)
-    Z_psi = (
-        torch.log(Z_eigenvectors[:, 0, 0]) - torch.log(Z_eigenvectors[:, 1, 1])
-    ) / 2j
-    Z_theta = torch.atan(
-        Z_eigenvectors[:, 0, 1] / Z_eigenvectors[:, 0, 0]
-    ).reshape(-1, 1)
-
-    ground_turth_parameters[:, :3] = torch.cat([X_psi, X_theta, X_mu], dim=0)
-    ground_turth_parameters[:, 3:6] = torch.cat([Y_psi, Y_theta, Y_mu], dim=0)
-    ground_turth_parameters[:, 6:] = torch.cat([Z_psi, Z_theta, Z_mu], dim=0)
-
-    return ground_turth_parameters
+    return torch.stack(
+        (X_psi, X_theta, X_mu, Y_psi, Y_theta, Y_mu, Z_psi, Z_theta, Z_mu),
+        dim=1,
+    )

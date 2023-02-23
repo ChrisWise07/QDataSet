@@ -114,68 +114,6 @@ class TestTraceDistanceBasedLoss(unittest.TestCase):
         )
 
 
-class TestConstructEstimatedVOUnital(unittest.TestCase):
-    def test_construct_estimated_VO_unital_sigma_x(self):
-        O_dagger = torch.tensor(SIGMA_X, dtype=torch.complex64)
-        psi = torch.tensor(0.5)
-        theta = torch.tensor(0.25)
-        mu = torch.tensor(1.0)
-        expected_V = torch.tensor(
-            [
-                [-0.2590 + 0.4034j, -0.8776 + 0.0000j],
-                [0.8776 + 0.0000j, -0.2590 - 0.4034j],
-            ],
-            dtype=torch.complex64,
-        )
-        self.assertTrue(
-            torch.allclose(
-                construct_estimated_VO_unital(psi, theta, mu, O_dagger),
-                expected_V,
-                atol=1e-04,
-            )
-        )
-
-    def test_construct_estimated_VO_unital_sigma_y(self):
-        O_dagger = torch.tensor(SIGMA_Y, dtype=torch.complex64)
-        psi = torch.tensor(0.1)
-        theta = torch.tensor(0.3)
-        mu = torch.tensor(0.5)
-        expected_V = torch.tensor(
-            [
-                [0.0561 + 0.2767j, 0.0000 + 0.4127j],
-                [0.0000 + 0.4127j, 0.0561 - 0.2767j],
-            ],
-            dtype=torch.complex64,
-        )
-        self.assertTrue(
-            torch.allclose(
-                construct_estimated_VO_unital(psi, theta, mu, O_dagger),
-                expected_V,
-                atol=1e-04,
-            )
-        )
-
-    def test_construct_estimated_VO_unital_sigma_z(self):
-        O_dagger = torch.tensor(SIGMA_Z, dtype=torch.complex64)
-        psi = torch.tensor(0.2)
-        theta = torch.tensor(0.4)
-        mu = torch.tensor(0.8)
-        expected_V = torch.tensor(
-            [
-                [0.5574 + 0.0000j, -0.5286 - 0.2235j],
-                [0.5286 - 0.2235j, 0.5574 + 0.00000j],
-            ],
-            dtype=torch.complex64,
-        )
-        self.assertTrue(
-            torch.allclose(
-                construct_estimated_VO_unital(psi, theta, mu, O_dagger),
-                expected_V,
-                atol=1e-04,
-            )
-        )
-
-
 class TestReturnEstimatedVOUnitalForBatch(unittest.TestCase):
     def test_return_estimated_VO_unital_for_batch_1(self):
         batch_parameters = torch.tensor(
